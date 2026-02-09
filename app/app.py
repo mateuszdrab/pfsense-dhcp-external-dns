@@ -58,7 +58,7 @@ def build_endpoints_for_lease(lease):
         {
             "dnsName": fqdn_a,
             "recordType": "TXT",
-            "targets": [lease["mac"]],
+            "targets": ["mac=" + lease["mac"]],
             "recordTTL": _default_ttl,
         },
     ]
