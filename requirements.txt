@@ -1,3 +1,2 @@
 # pypfsense
-dnspython
 pyyaml

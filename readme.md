@@ -1,12 +1,11 @@
-# DHCP Updater
+# Pfsense DHCP to External DNS CRD
 
-`dhcp_updater.py` is a script designed to update DNS records based on DHCP leases from a pfSense firewall. It processes DHCP leases and updates the corresponding DNS A, PTR, and TXT records using anonymous updates to the DNS server. This works with Windows DNS servers once the zone is configured to allow anonymous updates.
+A Python script designed to generate an ExternalDNS DNSEndpoint resource from DHCP leases on a pfSense firewall. It processes DHCP leases and produces DNS A, PTR, and TXT endpoints for ExternalDNS to apply.
 
 ## Requirements
 
 - Python 3.x
 - `pypfsense` library
-- `dnspython` library
 - `PyYAML` library
 
 ## Installation
@@ -14,8 +13,8 @@
 1. Clone the repository:
 
     ```sh
-    git clone https://github.com/mateuszdrab/pfsense-dhcp-updater.git
-    cd pfsense-dhcp-updater
+    git clone https://github.com/mateuszdrab/pfsense-dhcp-to-external-dns.git
+    cd pfsense-dhcp-to-external-dns
     ```
 
 2. Install the required Python libraries from the `requirements.txt` file:
@@ -29,8 +28,10 @@
 Create a `config.yaml` file in the root directory with the following structure:
 
 ```yaml
-dns_server: "your_dns_server_ip"
 zone: "your_dns_zone"
+dnsendpoint_name: "pfsense-dhcp-leases" # Optional
+dnsendpoint_namespace: "external-dns" # Optional
+ttl: 300 # Optional
 sites:
   "10": "site1"
   "20": "site2"
@@ -41,13 +42,13 @@ pfsense:
   verify_ssl: false # Set to true if you want to verify the SSL certificate
 ```
 
-# Sites Mapping
+## Sites Mapping
 
 The code includes functionality to map different sites, which can be useful when one DHCP server is serving multiple sites or locations. The sites are mapped based on the third octet of the IP address, allowing for easy identification and handling of IP addresses based on their site or location.
 
-# Records example
+## Records example
 
-For a lease with name example-lease and IP address 192.23.45.67 and the domain example.com, the following records will be created:
+For a lease with name example-lease and IP address 192.23.45.67 and the domain example.com, the following endpoints will be created:
 
 - A record: example-lease.example.com with the IP address 192.23.45.67
 - TXT record: example-lease.example.com with the MAC address of the lease
@@ -63,9 +64,9 @@ python app/app.py config.yaml
 
 If no configuration file is provided, the script will default to `config.yaml`.
 
-# Output
+## Output
 
-The script will output each obtained lease and the corresponding DNS records that were created or updated. The output will be in json format and therefore can be processed further if needed using other tools or scripts.
+The script outputs a single DNSEndpoint resource in YAML format, ready to be applied to your cluster for ExternalDNS to consume.
 
 ## License
 

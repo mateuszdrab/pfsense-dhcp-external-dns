@@ -1,7 +1,4 @@
 import pypfsense
-from dns import update, query, rcode, resolver
-from datetime import datetime
-import json
 import yaml
 import sys
 
@@ -16,68 +13,45 @@ else:
 with open(_config_path, "r") as config_file:
     config = yaml.safe_load(config_file)
 
-_dns_server = config["dns_server"]
 _sites = config["sites"]
 _zone = config["zone"]
 _pfsense_config = config["pfsense"]
+_dnsendpoint_name = config.get("dnsendpoint_name", "pfsense-dhcp-leases")
+_dnsendpoint_namespace = config.get("dnsendpoint_namespace")
+_default_ttl = config.get("ttl", 300)
 
 
-def update_dns(record_name, record_type, record_ttl, record_value, record_zone=_zone):
-    # Create an update message
-    update_record = update.Update(record_zone)
-
-    # Add record
-    update_record.replace(record_name, record_ttl, record_type, record_value)
-
-    # Send the update to the DNS server
-    response = query.tcp(update_record, _dns_server)  # Use UDP instead of TCP if needed
-
-    # Return record details and response rcode
-    return {  # Record details
-        "name": record_name,
-        "type": record_type,
-        "ttl": record_ttl,
-        "value": record_value,
-        "zone": record_zone,
-        # Response rcode
-        "rcode": rcode.to_text(response.rcode()),
-    }
-
-
-def process_lease(lease):
-    # Leaase as json
-    lease_json = json.dumps(lease)
-
+def build_endpoints_for_lease(lease):
     # Configuration
     ip = lease["ip"]
     octet = ip.split(".")[2]
     site = _sites[octet]
-    ttl = 300
     record_name_a = lease["hostname"] + "." + site + ".cctv"
     record_name_ptr = lease["ip"].split(".")[3]
+    fqdn_a = record_name_a + "." + _zone + "."
+    ptr_zone = octet + ".168.192.in-addr.arpa"
+    ptr_dns_name = record_name_ptr + "." + ptr_zone + "."
 
-    lease["update_dns"] = {"a": {}, "ptr": {}, "txt": {}}
-
-    # Update DNS A record
-    lease["update_dns"]["a"] = update_dns(record_name_a, "A", ttl, ip)
-
-    # Update DNS TXT record with lease MAC address
-    lease["update_dns"]["txt"] = update_dns(record_name_a, "TXT", ttl, lease["mac"])
-
-    # Update DNS PTR record
-    lease["update_dns"]["ptr"] = update_dns(
-        record_name_ptr,
-        "PTR",
-        ttl,
-        record_name_a + "." + _zone + ".",
-        octet + ".168.192.in-addr.arpa",
-    )
-
-    # Leaase as json
-    lease_json = json.dumps(lease)
-
-    # Print lease
-    print(lease_json)
+    return [
+        {
+            "dnsName": fqdn_a,
+            "recordType": "A",
+            "targets": [ip],
+            "ttl": _default_ttl,
+        },
+        {
+            "dnsName": fqdn_a,
+            "recordType": "TXT",
+            "targets": [lease["mac"]],
+            "ttl": _default_ttl,
+        },
+        {
+            "dnsName": ptr_dns_name,
+            "recordType": "PTR",
+            "targets": [fqdn_a],
+            "ttl": _default_ttl,
+        },
+    ]
 
 
 # Create a connection to the pfSense firewall
@@ -104,6 +78,20 @@ filtered_leases = [
     and lease["ip"].split(".")[2] in _sites.keys()
 ]
 
-# Loop through filtered leases and process them
+endpoints = []
+
+# Loop through filtered leases and collect endpoints
 for lease in filtered_leases:
-    process_lease(lease)
+    endpoints.extend(build_endpoints_for_lease(lease))
+
+dnsendpoint = {
+    "apiVersion": "externaldns.k8s.io/v1alpha1",
+    "kind": "DNSEndpoint",
+    "metadata": {"name": _dnsendpoint_name},
+    "spec": {"endpoints": endpoints},
+}
+
+if _dnsendpoint_namespace:
+    dnsendpoint["metadata"]["namespace"] = _dnsendpoint_namespace
+
+print(yaml.safe_dump(dnsendpoint, sort_keys=False))
