@@ -7,6 +7,7 @@ A Python script designed to generate an ExternalDNS DNSEndpoint resource from DH
 - Python 3.x
 - `pypfsense` library
 - `PyYAML` library
+- `kubernetes` library (for `--apply` flag)
 
 ## Installation
 
@@ -32,9 +33,9 @@ zone: "your_dns_zone"
 dnsendpoint_name: "pfsense-dhcp-leases" # Optional
 dnsendpoint_namespace: "external-dns" # Optional
 ttl: 300 # Optional
-sites:
-  "10": "site1"
-  "20": "site2"
+subnets:
+  "10": "subnet1"
+  "20": "subnet2"
 pfsense:
   url: "https://your_pfsense_url"
   username: "your_pfsense_username"
@@ -42,9 +43,9 @@ pfsense:
   verify_ssl: false # Set to true if you want to verify the SSL certificate
 ```
 
-## Sites Mapping
+## Subnet Mapping
 
-The code includes functionality to map different sites, which can be useful when one DHCP server is serving multiple sites or locations. The sites are mapped based on the third octet of the IP address, allowing for easy identification and handling of IP addresses based on their site or location.
+The code includes functionality to map different subnets, which can be useful when one DHCP server is serving multiple subnets or locations. The subnets are mapped based on the third octet of the IP address, allowing for easy identification and handling of IP addresses based on their subnet or location.
 
 ## Records example
 
@@ -56,7 +57,9 @@ For a lease with name example-lease and IP address 192.23.45.67 and the domain e
 
 ## Usage
 
-Run the script with the configuration file as an argument:
+### Output YAML (default)
+
+Run the script to output the DNSEndpoint resource as YAML:
 
 ```sh
 python app/app.py config.yaml
@@ -64,9 +67,57 @@ python app/app.py config.yaml
 
 If no configuration file is provided, the script will default to `config.yaml`.
 
+You can pipe the output directly to kubectl:
+
+```sh
+python app/app.py config.yaml | kubectl apply -f -
+```
+
+### Apply to Cluster
+
+When running as a pod in the cluster, use the `--apply` flag to apply the DNSEndpoint directly using the pod's service account:
+
+```sh
+python app/app.py config.yaml --apply
+```
+
+This requires the pod to be configured with a service account that has permissions to create/update DNSEndpoint resources in the target namespace.
+
 ## Output
 
-The script outputs a single DNSEndpoint resource in YAML format, ready to be applied to your cluster for ExternalDNS to consume.
+The script outputs a single DNSEndpoint resource in YAML format (to stdout), ready to be applied to your cluster for ExternalDNS to consume.
+
+When using the `--apply` flag, the script applies the DNSEndpoint directly to the cluster via the Kubernetes API and prints status messages to stderr.
+
+## Deploying as a Kubernetes Pod
+
+When deploying this as a pod in your cluster, ensure the pod's service account has the necessary RBAC permissions:
+
+```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: pfsense-dhcp-external-dns-crd
+rules:
+- apiGroups: ["externaldns.k8s.io"]
+  resources: ["dnsendpoints"]
+  verbs: ["create", "update", "patch", "get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: pfsense-dhcp-external-dns-crd
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: pfsense-dhcp-external-dns-crd
+subjects:
+- kind: ServiceAccount
+  name: pfsense-dhcp-external-dns
+  namespace: default  # Change to your namespace
+```
+
+The pod will automatically use the mounted service account credentials when running with the `--apply` flag.
 
 ## License
 
