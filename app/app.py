@@ -16,6 +16,14 @@ parser.add_argument(
 parser.add_argument(
     "--apply", action="store_true", help="Apply the DNSEndpoint to the cluster"
 )
+parser.add_argument(
+    "--ttl", type=int, help="TTL for DNS records (overrides config file)"
+)
+parser.add_argument(
+    "--create-ptr-records",
+    action="store_true",
+    help="Create PTR records (overrides config file)",
+)
 args = parser.parse_args()
 
 _config_path = args.config_file
@@ -30,8 +38,12 @@ _zone = config["zone"]
 _pfsense_config = config["pfsense"]
 _dnsendpoint_name = config.get("dnsendpoint_name", "pfsense-dhcp-leases")
 _dnsendpoint_namespace = config.get("dnsendpoint_namespace")
-_default_ttl = config.get("ttl", 300)
-_create_ptr_records = config.get("create_ptr_records", False)
+_default_ttl = args.ttl if args.ttl is not None else config.get("ttl", 300)
+_create_ptr_records = (
+    args.create_ptr_records
+    if args.create_ptr_records
+    else config.get("create_ptr_records", False)
+)
 
 
 def build_endpoints_for_lease(lease):
